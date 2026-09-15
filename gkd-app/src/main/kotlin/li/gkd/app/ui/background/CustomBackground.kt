@@ -50,7 +50,7 @@ object CustomBackgroundState {
     }
 
     fun setScrim(context: Context, alpha: Float) {
-        val value = alpha.coerceIn(SCRIM_RANGE.first, SCRIM_RANGE.last)
+        val value = alpha.coerceIn(SCRIM_RANGE.start, SCRIM_RANGE.endInclusive)
         scrimFlow.value = value
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
