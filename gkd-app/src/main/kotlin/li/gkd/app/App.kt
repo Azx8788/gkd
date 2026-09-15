@@ -37,6 +37,7 @@ import li.gkd.app.data.subscription.SubscriptionRepository
 import li.gkd.app.data.appinfo.AppInfoRepository
 import li.gkd.app.data.selfAppInfo
 import li.gkd.app.notif.NotificationChannels
+import li.gkd.app.ui.background.CustomBackgroundState
 import li.gkd.app.platform.lifecycle.MainActivityVisibility
 import li.gkd.app.platform.lifecycle.RuntimeStateSynchronizer
 import li.gkd.app.priv.PrivilegeOwnerLifecycle
@@ -268,6 +269,7 @@ class App : Application() {
             ExposeService.initCommandFile()
         }
         NotificationChannels.initialize()
+        CustomBackgroundState.initialize(this)
         AppInfoRepository.initialize()
         initA11yFeat()
         initPrivilege()

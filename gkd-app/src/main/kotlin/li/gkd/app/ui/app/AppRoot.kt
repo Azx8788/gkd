@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import li.gkd.app.ui.component.AppDialog
+import li.gkd.app.ui.background.CustomBackgroundLayer
 import li.gkd.app.ui.share.LocalMainViewModel
 import li.gkd.app.ui.style.AppTheme
 
@@ -39,6 +40,7 @@ fun AppRoot() {
     }
     AppTheme {
         Box(modifier = Modifier.fillMaxSize()) {
+            CustomBackgroundLayer()
             MainNavigation()
             AppOverlayHost()
             mainVm.permissionRequests.Render(
