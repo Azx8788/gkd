@@ -173,7 +173,7 @@ fun useAppListPage(): ScaffoldExt {
                 PerfIconButton(
                     imageVector = PerfIcon.ToggleOn,
                     contentDescription = "一键开启所有规则并去重",
-                    onClick = scope.launchUiAction {
+                    onClick = vm.scope.launchUiAction {
                         if (!mainVm.dialogRequests.confirm(
                                 title = "一键开启所有规则",
                                 text = "将开启全部订阅的所有规则组, 并自动关闭重复规则以节省耗电\n(仅保留首个, 其余关闭)\n\n确定继续?",
@@ -192,7 +192,7 @@ fun useAppListPage(): ScaffoldExt {
                 PerfIconButton(
                     imageVector = PerfIcon.Layers,
                     contentDescription = "检查重复规则",
-                    onClick = scope.launchUiAction {
+                    onClick = vm.scope.launchUiAction {
                         val dup = RuleDedupService.findDuplicates()
                         val totalDup = dup.values.sum()
                         if (totalDup == 0) {
