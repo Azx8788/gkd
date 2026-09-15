@@ -198,11 +198,18 @@ fun useAppListPage(): ScaffoldExt {
                         if (totalDup == 0) {
                             mainVm.dialogRequests.showMessage(title = "检查完成", text = "未发现重复规则 👍")
                         } else {
+                            val detail = dup.entries.take(10).joinToString("\n") { (app, n) -> "  $app: $n 组" } +
+                                if (dup.size > 10) "\n  ...共 ${dup.size} 个应用" else ""
+                            if (!mainVm.dialogRequests.confirm(
+                                    title = "发现 $totalDup 组重复规则",
+                                    text = "$detail\n\n是否一键关闭重复规则?\n(每个重复仅保留第一条开启, 其余关闭)",
+                                )) return@launchUiAction
+                            val (closed, byApp) = RuleDedupService.closeDuplicatesOnly()
                             mainVm.dialogRequests.showMessage(
-                                title = "发现 $totalDup 组重复规则",
-                                text = dup.entries.take(10).joinToString("\n") { (app, n) -> "  $app: $n 组" } +
-                                    if (dup.size > 10) "\n  ...共 ${dup.size} 个应用" else "" +
-                                    "\n\n可使用「一键开启所有规则并去重」自动关闭重复",
+                                title = "完成",
+                                text = "已关闭 $closed 组重复规则\n" +
+                                    byApp.entries.take(10).joinToString("\n") { (app, n) -> "  $app: $n 组" } +
+                                    if (byApp.size > 10) "\n  ...共 ${byApp.size} 个应用" else "",
                             )
                         }
                     },

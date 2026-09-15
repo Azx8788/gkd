@@ -131,6 +131,43 @@ object RuleDedupService {
         appDupCount
     }
 
+    /**
+     * 只关闭重复组(同 app 内指纹相同, 保留每组第一条开启), 不改动其他组
+     */
+    suspend fun closeDuplicatesOnly(): Pair<Int, Map<String, Int>> = withContext(Dispatchers.IO) {
+        val snapshot = SubscriptionRepository.awaitSnapshot()
+        val systemAppIds = AppInfoRepository.systemAppsFlow.value
+        val items = Db.subsItemDao.queryAll().associateBy { it.id }
+        val toDisable = mutableListOf<RuleGroupTarget>()
+
+        for ((appId, subsAndGroups) in groupGroupsByApp(snapshot)) {
+            val entries = subsAndGroups
+                .sortedWith(compareBy<Pair<Long, RawSubscription.RawAppGroup>> { (sId, _) ->
+                    items[sId]?.order ?: Int.MAX_VALUE
+                })
+            val seen = mutableSetOf<String>()
+            for ((subsId, group) in entries) {
+                val fp = groupFingerprint(group)
+                if (!seen.add(fp)) {
+                    toDisable.add(RuleGroupTarget.App(subsId, appId, group.key))
+                }
+            }
+        }
+        val closed = if (toDisable.isNotEmpty()) {
+            RuleGroupConfigService.batchUpdateGroupEnabled(
+                toDisable.toSet(),
+                false,
+                launcherAppId,
+                systemAppIds,
+            ).size
+        } else {
+            0
+        }
+        val dupByApp = toDisable.groupBy { (it as RuleGroupTarget.App).appId }
+            .mapValues { (_, v) -> v.size }
+        closed to dupByApp
+    }
+
     private fun groupGroupsByApp(snapshot: li.gkd.app.data.subscription.SubscriptionSnapshot): Map<String, List<Pair<Long, RawSubscription.RawAppGroup>>> {
         val result = mutableMapOf<String, MutableList<Pair<Long, RawSubscription.RawAppGroup>>>()
         for ((subsId, sub) in snapshot.subscriptions) {
