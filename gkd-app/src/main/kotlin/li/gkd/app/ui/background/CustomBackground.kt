@@ -33,7 +33,7 @@ object CustomBackgroundState {
     private const val KEY_PATH = "bg_path"
     private const val KEY_SCRIM = "bg_scrim"
     const val DEFAULT_SCRIM = 0.6f
-    const val SCRIM_RANGE = 0.2f..0.95f
+    val SCRIM_RANGE = 0.2f..0.95f
 
     val pathFlow = MutableStateFlow<String?>(null)
     val scrimFlow = MutableStateFlow(DEFAULT_SCRIM)
