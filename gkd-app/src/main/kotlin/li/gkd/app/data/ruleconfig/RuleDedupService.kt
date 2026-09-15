@@ -6,6 +6,7 @@ import li.gkd.app.a11y.launcherAppId
 import li.gkd.app.data.RawSubscription
 import li.gkd.app.data.appinfo.AppInfoRepository
 import li.gkd.app.data.subscription.SubscriptionRepository
+import li.gkd.app.domain.rule.RuleGroupTarget
 import li.gkd.db.SubsItem
 import li.gkd.db.Db
 
