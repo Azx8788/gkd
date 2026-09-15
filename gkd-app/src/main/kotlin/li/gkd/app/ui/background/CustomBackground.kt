@@ -2,6 +2,7 @@ package li.gkd.app.ui.background
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,7 +64,17 @@ object CustomBackgroundState {
         runCatching {
             val dir = context.filesDir.resolve("background").apply { mkdirs() }
             val mime = context.contentResolver.getType(uri)
-            val ext = when {
+            // 文件名扩展名优先, 其次 mime 推断; 保留扩展名保证 coil 正确识别动图
+            val displayName = context.contentResolver
+                .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            val nameExt = displayName
+                ?.substringAfterLast('.', "")
+                ?.lowercase()
+                ?.takeIf { it in setOf("gif", "webp", "png", "jpg", "jpeg") }
+            val ext = nameExt ?: when {
                 mime?.contains("gif") == true -> "gif"
                 mime?.contains("webp") == true -> "webp"
                 mime?.contains("png") == true -> "png"
@@ -127,7 +138,7 @@ fun CustomBackgroundLayer() {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background.copy(alpha = scrim)),
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = scrim)),
         )
     }
 }
