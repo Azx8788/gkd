@@ -2,12 +2,14 @@ package li.gkd.app.service
 
 import android.view.WindowManager
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import li.gkd.app.META
 import li.gkd.app.a11y.useA11yServiceEnabledFlow
@@ -139,6 +141,35 @@ class StatusService : LifecycleHookService() {
                     ).startForeground()
                 }
             }
+            // 无障碍看门狗: 周期检查无障碍运行状态, 断开时自动重启恢复
+            lifecycleScope.launch {
+                storeFlow.map { it.enableA11yWatchdog }.distinctUntilChanged()
+                    .collectLatest { enabled ->
+                        if (!enabled) return@collectLatest
+                        var consecutiveFailures = 0
+                        while (true) {
+                            delay(A11Y_WATCHDOG_CHECK_INTERVAL.milliseconds)
+                            if (!storeFlow.value.enableAutomator) continue
+                            if (A11yService.isRunning.value) {
+                                consecutiveFailures = 0
+                                continue
+                            }
+                            fixRestartAutomatorService()
+                            // 等待重启流程完成(内部含时序等待)后再判断结果
+                            delay(A11Y_WATCHDOG_AWAIT_TIME.milliseconds)
+                            if (A11yService.isRunning.value) {
+                                consecutiveFailures = 0
+                            } else {
+                                consecutiveFailures++
+                                // 连续失败时指数退避, 减少无效重试与提示打扰
+                                delay(
+                                    (A11Y_WATCHDOG_BACKOFF_BASE shl consecutiveFailures.coerceAtMost(4))
+                                        .coerceAtMost(A11Y_WATCHDOG_BACKOFF_MAX).milliseconds
+                                )
+                            }
+                        }
+                    }
+            }
         }
         onDestroyed {
             KeepAliveOverlayCoordinator.release(
@@ -174,6 +205,16 @@ class StatusService : LifecycleHookService() {
 }
 
 private val defaultStatusNotification by lazy { NotificationCatalog.status() }
+
+// 看门狗检查间隔
+private const val A11Y_WATCHDOG_CHECK_INTERVAL = 5000L
+
+// 触发重启后等待其生效的时间(略大于内部修复+启动等待的总时长)
+private const val A11Y_WATCHDOG_AWAIT_TIME = 4000L
+
+// 连续失败时的指数退避基准与上限
+private const val A11Y_WATCHDOG_BACKOFF_BASE = 5000L
+private const val A11Y_WATCHDOG_BACKOFF_MAX = 60_000L
 
 private fun String.replaceTemplate(ruleSummary: RuleSummary, count: Long): String {
     return replace($$"${i}", ruleSummary.globalGroups.size.toString())

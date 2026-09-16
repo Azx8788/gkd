@@ -37,8 +37,12 @@ import androidx.navigation3.runtime.NavKey
 import kotlinx.serialization.Serializable
 import li.gkd.app.META
 import li.gkd.app.permission.PermissionStates
+import li.gkd.app.platform.service.ServiceController
 import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.service.A11yService
+import li.gkd.app.service.StatusService
+import li.gkd.app.store.AppStore.storeFlow
+import li.gkd.app.ui.component.TextSwitch
 import li.gkd.app.ui.component.AnimatedBooleanContent
 import li.gkd.app.ui.PrivilegeServiceRoute
 import li.gkd.app.ui.A11YScopeAppListRoute
@@ -68,6 +72,7 @@ fun WorkModePage() {
     val a11yRunning by A11yService.isRunning.collectAsStateWithLifecycle()
     val privilegeContext by privilegeContextFlow.collectAsStateWithLifecycle()
     val automatorMode by mainVm.automatorModeFlow.collectAsStateWithLifecycle()
+    val store by storeFlow.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     Scaffold(modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection), topBar = {
         PerfTopAppBar(scrollBehavior = scrollBehavior, navigationIcon = {
@@ -218,6 +223,29 @@ fun WorkModePage() {
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
+                TextSwitch(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = cardHorizontalPadding),
+                    paddingDisabled = true,
+                    title = "无障碍看门狗",
+                    subtitle = "无障碍意外断开时每 5 秒自动检测并重启恢复，依赖「常驻通知」保活进程",
+                    checked = store.enableA11yWatchdog,
+                    onCheckedChange = vm.scope.launchUiAction { enabled ->
+                        if (enabled && !StatusService.isRunning.value) {
+                            if (!mainVm.permissionRequests.ensurePermissions(
+                                    PermissionStates.foregroundServiceSpecialUse,
+                                    PermissionStates.notification,
+                                )
+                            ) {
+                                toast("需要「常驻通知」相关权限以保活看门狗")
+                                return@launchUiAction
+                            }
+                            ServiceController.setStatusEnabled(true)
+                        }
+                        vm.setA11yWatchdogEnabled(enabled)
+                    },
+                )
                 Spacer(modifier = Modifier.height(12.dp))
             }
             Spacer(modifier = Modifier.height(12.dp))

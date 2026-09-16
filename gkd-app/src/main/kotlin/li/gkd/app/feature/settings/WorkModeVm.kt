@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import li.gkd.app.permission.PermissionStates
+import li.gkd.app.store.AppStore
 import li.gkd.app.ui.share.BaseViewModel
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -16,5 +17,9 @@ class WorkModeVm : BaseViewModel() {
                 delay(1000.milliseconds)
             }
         }
+    }
+
+    fun setA11yWatchdogEnabled(enabled: Boolean) {
+        AppStore.updateSettings { it.copy(enableA11yWatchdog = enabled) }
     }
 }
