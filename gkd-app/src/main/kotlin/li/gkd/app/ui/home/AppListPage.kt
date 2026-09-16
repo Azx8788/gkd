@@ -63,6 +63,7 @@ import li.gkd.app.ui.component.MenuItemCheckbox
 import li.gkd.app.ui.component.MenuItemRadioButton
 import li.gkd.app.ui.component.PerfCheckbox
 import li.gkd.app.ui.component.PerfIcon
+import li.gkd.app.data.ruleconfig.RuleDedupService
 import li.gkd.app.ui.component.PerfIconButton
 import li.gkd.app.ui.component.PerfTopAppBar
 import li.gkd.app.ui.component.QueryPkgAuthCard
@@ -168,6 +169,52 @@ fun useAppListPage(): ScaffoldExt {
                     }
                 }
             }, actions = {
+                // ===== 规则去重/全开 =====
+                PerfIconButton(
+                    imageVector = PerfIcon.ToggleOn,
+                    contentDescription = "一键开启所有规则并去重",
+                    onClick = vm.scope.launchUiAction {
+                        if (!mainVm.dialogRequests.confirm(
+                                title = "一键开启所有规则",
+                                text = "将开启全部订阅的所有规则组, 并自动关闭重复规则以节省耗电\n(仅保留首个, 其余关闭)\n\n确定继续?",
+                            )) return@launchUiAction
+                        val result = RuleDedupService.enableAllAndDedup()
+                        mainVm.dialogRequests.showMessage(
+                            title = "完成",
+                            text = "已开启 ${result.enabledCount} 组, 关闭重复 ${result.duplicateCountClosed} 组\n" +
+                                result.duplicateCountByApp
+                                    .entries.take(10)
+                                    .joinToString("\n") { (app, n) -> "  $app: $n 组重复" } +
+                                if (result.duplicateCountByApp.size > 10) "\n  ...共 ${result.duplicateCountByApp.size} 个应用" else "",
+                        )
+                    },
+                )
+                PerfIconButton(
+                    imageVector = PerfIcon.Layers,
+                    contentDescription = "检查重复规则",
+                    onClick = vm.scope.launchUiAction {
+                        val dup = RuleDedupService.findDuplicates()
+                        val totalDup = dup.values.sum()
+                        if (totalDup == 0) {
+                            mainVm.dialogRequests.showMessage(title = "检查完成", text = "未发现重复规则 👍")
+                        } else {
+                            val detail = dup.entries.take(10).joinToString("\n") { (app, n) -> "  $app: $n 组" } +
+                                if (dup.size > 10) "\n  ...共 ${dup.size} 个应用" else ""
+                            if (!mainVm.dialogRequests.confirm(
+                                    title = "发现 $totalDup 组重复规则",
+                                    text = "$detail\n\n是否一键关闭重复规则?\n(每个重复仅保留第一条开启, 其余关闭)",
+                                )) return@launchUiAction
+                            val (closed, byApp) = RuleDedupService.closeDuplicatesOnly()
+                            mainVm.dialogRequests.showMessage(
+                                title = "完成",
+                                text = "已关闭 $closed 组重复规则\n" +
+                                    byApp.entries.take(10).joinToString("\n") { (app, n) -> "  $app: $n 组" } +
+                                    if (byApp.size > 10) "\n  ...共 ${byApp.size} 个应用" else "",
+                            )
+                        }
+                    },
+                )
+                // ===== 原有 actions =====
                 if (state.queryPackagesAbnormal) {
                     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.error) {
                         PerfIconButton(

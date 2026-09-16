@@ -1,14 +1,11 @@
 package li.gkd.app.feature.snapshot
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -21,11 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -38,9 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,8 +45,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -64,12 +53,11 @@ import androidx.navigation3.runtime.NavKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.Serializable
 import li.gkd.app.data.ComplexSnapshot
 import li.gkd.app.data.snapshot.SnapshotRepository
 import li.gkd.app.data.subscription.SubscriptionRepository
-import li.gkd.app.ui.component.AppDialog
 import li.gkd.app.ui.component.PerfIconButton
 import li.gkd.app.ui.component.PerfIcon
 import li.gkd.app.ui.component.PerfTopAppBar
@@ -87,8 +75,6 @@ private data class InspectState(
     val snapshot: ComplexSnapshot,
     val bitmap: Bitmap,
     val contexts: Map<Int, SelectorGen.NodeContext>,
-    val roots: List<Int>,
-    val children: Map<Int, List<Int>>,
     val autoDetected: List<SelectorGen.Candidate>,
 )
 
@@ -97,17 +83,10 @@ fun SnapshotInspectPage(route: SnapshotInspectRoute) {
     val mainVm = LocalMainViewModel.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var showNotice by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        // 首次进入审查页时弹窗: 说明本版本来源与功能
-        val prefs = context.getSharedPreferences("gkd_inspect", Context.MODE_PRIVATE)
-        showNotice = !prefs.getBoolean("third_party_notice_shown", false)
-    }
     var state by remember(route.snapshotId) { mutableStateOf<InspectState?>(null) }
     var loadError by remember(route.snapshotId) { mutableStateOf<String?>(null) }
     var selectedId by remember(route.snapshotId) { mutableStateOf<Int?>(null) }
     var saving by remember { mutableStateOf(false) }
-    val expanded = remember(route.snapshotId) { mutableStateMapOf<Int, Boolean>() }
 
     LaunchedEffect(route.snapshotId) {
         withContext(Dispatchers.IO) {
@@ -117,15 +96,10 @@ fun SnapshotInspectPage(route: SnapshotInspectRoute) {
                 val bitmap = BitmapFactory.decodeFile(
                     SnapshotRepository.screenshotFile(route.snapshotId).absolutePath,
                 ) ?: error("截图解码失败")
-                val (contexts, roots) = SelectorGen.buildContexts(snapshot.nodes)
-                val children = snapshot.nodes
-                    .groupBy { it.pid }
-                    .mapValues { (_, v) -> v.sortedBy { it.attr.index }.map { it.id } }
+                val (contexts, _) = SelectorGen.buildContexts(snapshot.nodes)
                 val detected = SelectorGen.autoDetect(contexts)
                 withContext(Dispatchers.Main) {
-                    state = InspectState(snapshot, bitmap, contexts, roots, children, detected)
-                    // 默认展开根节点, 便于浏览
-                    roots.take(2).forEach { expanded[it] = true }
+                    state = InspectState(snapshot, bitmap, contexts, detected)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -179,9 +153,8 @@ fun SnapshotInspectPage(route: SnapshotInspectRoute) {
                 title = {
                     val st = state
                     Text(
-                        text = "快照审查 · ${st?.snapshot?.appInfo?.name ?: "加载中"}",
+                        text = "生成跳过广告规则 · ${st?.snapshot?.appInfo?.name ?: "加载中"}",
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 },
             )
@@ -209,11 +182,12 @@ fun SnapshotInspectPage(route: SnapshotInspectRoute) {
                     .fillMaxSize()
                     .scaffoldPadding(contentPadding),
             ) {
-                // ===== 截图区(可点击选节点, 选中节点红框) =====
+                // ===== 全屏截图区: 点击选节点, 选中红框高亮 =====
+                val selectedCtx = selectedId?.let { st.contexts[it] }
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.38f),
+                        .weight(1f),
                 ) {
                     val density = LocalDensity.current
                     val imageRatio = st.bitmap.width.toFloat() / st.bitmap.height
@@ -248,7 +222,7 @@ fun SnapshotInspectPage(route: SnapshotInspectRoute) {
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds,
                         )
-                        val sel = selectedId?.let { st.contexts[it] }
+                        val sel = selectedCtx
                         if (sel != null) {
                             val a = sel.node.attr
                             Box(
@@ -270,8 +244,34 @@ fun SnapshotInspectPage(route: SnapshotInspectRoute) {
                     }
                 }
 
-                // ===== 选中节点属性面板 =====
-                val selectedCtx = selectedId?.let { st.contexts[it] }
+                // ===== 底部工具栏 =====
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = when {
+                            selectedCtx != null -> "已选中节点, 可一键生成规则"
+                            st.autoDetected.isNotEmpty() -> "点击图中位置选择节点(共识别 ${st.autoDetected.size} 个疑似广告按钮)"
+                            else -> "点击图中位置选择广告按钮"
+                        },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (st.autoDetected.isNotEmpty()) {
+                        TextButton(
+                            onClick = { saveCandidates(st.autoDetected) },
+                            enabled = !saving,
+                        ) {
+                            Text("识别结果一键保存(${st.autoDetected.size})")
+                        }
+                    }
+                }
+
+                // ===== 选中节点详情浮层 =====
                 if (selectedCtx != null) {
                     val a = selectedCtx.node.attr
                     val selector = remember(selectedId) {
@@ -280,228 +280,64 @@ fun SnapshotInspectPage(route: SnapshotInspectRoute) {
                     val path = remember(selectedId) {
                         SelectorGen.nodePathSelector(selectedCtx, st.contexts)
                     }
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 220.dp)
-                            .verticalScroll(rememberScrollState())
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            text = "@${a.name?.substringAfterLast('.')}  (${a.width}×${a.height})",
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        if (!a.text.isNullOrEmpty()) {
-                            Text("text: ${a.text}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (!a.desc.isNullOrEmpty()) {
-                            Text("desc: ${a.desc}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (!a.id.isNullOrEmpty()) {
-                            Text("id: ${a.id}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (!a.vid.isNullOrEmpty()) {
-                            Text("vid: ${a.vid}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(
-                            "clickable=${a.clickable}  visible=${a.visibleToUser}  childCount=${a.childCount}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                        if (selector.isNotEmpty()) {
-                            Text("选择器:", style = MaterialTheme.typography.labelMedium)
-                            Text(
-                                selector,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Text("节点路径:", style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            path,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Row {
-                            TextButton(onClick = { copyText(selector) }, enabled = selector.isNotEmpty()) {
-                                Text("复制选择器")
-                            }
-                            TextButton(onClick = { copyText(path) }) {
-                                Text("复制路径")
-                            }
-                        }
-                        Button(
-                            onClick = {
-                                saveCandidates(listOf(SelectorGen.Candidate("手动", selector)))
-                            },
-                            enabled = selector.isNotEmpty() && !saving,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(if (saving) "保存中..." else "保存此节点为规则")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                } else {
-                    Text(
-                        text = "点击截图或下方节点树选择节点\n绿色圆点=可点击节点",
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                HorizontalDivider()
-
-                // ===== 节点树 =====
-                val visibleNodes by remember(st) {
-                    derivedStateOf {
-                        buildList {
-                            fun dfs(id: Int, depth: Int) {
-                                add(id to depth)
-                                if (expanded[id] == true) {
-                                    st.children[id]?.forEach { dfs(it, depth + 1) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(
+                            Modifier
+                                .heightIn(max = 240.dp)
+                                .verticalScroll(rememberScrollState())
+                                .padding(12.dp),
+                        ) {
+                            Text(
+                                text = "@${a.name?.substringAfterLast('.')}  (${a.width}×${a.height})",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            if (!a.text.isNullOrEmpty()) {
+                                Text("text: ${a.text}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (!a.desc.isNullOrEmpty()) {
+                                Text("desc: ${a.desc}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (!a.id.isNullOrEmpty()) {
+                                Text("id: ${a.id}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (!a.vid.isNullOrEmpty()) {
+                                Text("vid: ${a.vid}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                            if (selector.isNotEmpty()) {
+                                Text(
+                                    selector,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            Row {
+                                if (selector.isNotEmpty()) {
+                                    TextButton(onClick = { copyText(selector) }) {
+                                        Text("复制选择器")
+                                    }
+                                }
+                                TextButton(onClick = { copyText(path) }) {
+                                    Text("复制路径")
                                 }
                             }
-                            st.roots.forEach { dfs(it, 0) }
-                        }
-                    }
-                }
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(0.62f)
-                        .fillMaxWidth(),
-                ) {
-                    items(visibleNodes, key = { it.first }) { (id, depth) ->
-                        val ctx = st.contexts[id] ?: return@items
-                        val a = ctx.node.attr
-                        val hasChildren = st.children[id]?.isNotEmpty() == true
-                        val isSelected = selectedId == id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    if (isSelected) {
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    } else {
-                                        Color.Transparent
-                                    },
-                                )
-                                .clickable { selectedId = id }
-                                .padding(
-                                    start = (depth * 14).dp + 8.dp,
-                                    top = 5.dp,
-                                    bottom = 5.dp,
-                                    end = 8.dp,
-                                ),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (hasChildren) {
-                                val isOpen = expanded[id] == true
-                                androidx.compose.material3.Icon(
-                                    imageVector = if (isOpen) {
-                                        PerfIcon.ExpandLess
-                                    } else {
-                                        PerfIcon.ExpandMore
-                                    },
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() },
-                                        ) { expanded[id] = !(expanded[id] == true) },
-                                )
-                            } else {
-                                Spacer(Modifier.width(18.dp))
-                            }
-                            Text(
-                                text = buildString {
-                                    append(a.name?.substringAfterLast('.') ?: "NULL")
-                                    val t = a.text?.trim().orEmpty()
-                                        .ifEmpty { a.desc?.trim().orEmpty() }
-                                    if (t.isNotEmpty()) append("  \"$t\"")
+                            Button(
+                                onClick = {
+                                    saveCandidates(listOf(SelectorGen.Candidate("手动", selector)))
                                 },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (a.clickable) {
-                                Box(
-                                    Modifier
-                                        .padding(start = 4.dp)
-                                        .size(6.dp)
-                                        .background(Color(0xFF4CAF50), CircleShape),
-                                )
+                                enabled = selector.isNotEmpty() && !saving,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (saving) "保存中..." else "生成规则并保存")
                             }
+                            Spacer(Modifier.height(4.dp))
                         }
-                    }
-                }
-
-                // ===== 底部: 自动识别保存 =====
-                if (st.autoDetected.isNotEmpty()) {
-                    Button(
-                        onClick = { saveCandidates(st.autoDetected) },
-                        enabled = !saving,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Text("一键保存 ${st.autoDetected.size} 条识别结果(跳过/关闭/知道了...)")
-                    }
-                }
-            }
-        }
-    }
-
-    // ===== 第三方版本说明弹窗(首次进入审查页弹出一次) =====
-    if (showNotice) {
-        AppDialog(onDismissRequest = { showNotice = false }) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text(
-                        text = "关于本版本",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = "本应用是基于开源项目 GKD(https://github.com/gkd-kit/gkd) 的第三方修改版, 在原版基础上新增/改动以下内容:",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "1. 快照审查器: 抓取快照后在记录菜单选择\"生成跳过广告规则\", 自动识别广告关闭按钮并生成规则, 一键保存到本地订阅, 立即生效\n\n2. 内置三条广告订阅(AIsouler/甘霖/梦念逍遥), 首次启动自动加载, 每次启动自动检查更新\n\n3. 原版\"查看\"拆分出\"生成跳过广告规则\"和\"查看截图\"两个入口",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = "使用方式:\n① 抓到快照后进入本页\n② 点击截图或下方节点树选中广告按钮(绿点=可点击)\n③ 点\"保存此节点为规则\"或底部\"一键保存识别结果\"",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Button(
-                        onClick = {
-                            context.getSharedPreferences("gkd_inspect", Context.MODE_PRIVATE)
-                                .edit()
-                                .putBoolean("third_party_notice_shown", true)
-                                .apply()
-                            showNotice = false
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("我知道了")
                     }
                 }
             }

@@ -16,6 +16,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -55,6 +57,8 @@ import li.gkd.app.ui.component.PerfIconButton
 import li.gkd.app.ui.component.PerfTopAppBar
 import li.gkd.app.ui.component.SettingItem
 import li.gkd.app.ui.component.SettingsDialog
+import li.gkd.app.ui.background.CustomBackgroundState
+import li.gkd.app.util.ToastUtils.toast
 import li.gkd.app.ui.component.TextSwitch
 import li.gkd.app.ui.component.autoFocus
 import li.gkd.app.ui.share.LocalMainViewModel
@@ -268,6 +272,50 @@ private fun AdvancedContent() {
                 subtitle = "应用异常退出记录",
                 onClick = { mainVm.navigatePage(CrashReportRoute) },
             )
+            Spacer(modifier = Modifier.height(EmptyHeight))
+
+            // ===== 自定义背景 =====
+            val bgContext = LocalContext.current
+            val bgPath by CustomBackgroundState.pathFlow.collectAsStateWithLifecycle()
+            val bgScrim by CustomBackgroundState.scrimFlow.collectAsStateWithLifecycle()
+            SettingItem(
+                title = "自定义背景",
+                subtitle = if (bgPath != null) {
+                    "已设置(点击更换), 支持 png/jpg/webp/gif 动图"
+                } else {
+                    "未设置, 支持 png/jpg/webp/gif 动图"
+                },
+                onClick = scope.launchUiAction {
+                    val uri = mainVm.activityResults.pickImage() ?: return@launchUiAction
+                    val ok = CustomBackgroundState.setFromUri(bgContext, uri)
+                    toast(if (ok) "背景已更新" else "背景设置失败")
+                },
+            )
+            if (bgPath != null) {
+                SettingItem(
+                    title = "清除背景",
+                    subtitle = "恢复默认主题背景",
+                    onClick = {
+                        CustomBackgroundState.clear(bgContext)
+                        toast("已恢复默认背景")
+                    },
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Text(
+                        text = "背景遮罩浓度: ${(bgScrim * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = bgScrim,
+                        onValueChange = { CustomBackgroundState.setScrim(bgContext, it) },
+                        valueRange = CustomBackgroundState.SCRIM_RANGE,
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(EmptyHeight))
         }
     }

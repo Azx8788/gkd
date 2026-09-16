@@ -62,12 +62,15 @@ fun AppTheme(
     val darkTheme = (enableDarkTheme ?: systemInDarkTheme).let {
         if (invertedTheme) !it else it
     }
-    val colorScheme = when {
+    val rawColorScheme = when {
         AndroidTarget.S && enableDynamicColor && darkTheme -> dynamicDarkColorScheme(app)
         AndroidTarget.S && enableDynamicColor && !darkTheme -> dynamicLightColorScheme(app)
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+    // 页面容器背景透明化: 让 AppRoot 底层的自定义背景层透出;
+    // 窗口底色由下方 decorView 设置(原始背景色)兜底, 未设背景时视觉与原来一致
+    val colorScheme = rawColorScheme.copy(background = Color.Transparent)
 
     val activity = LocalActivity.current
     if (activity != null) {
@@ -77,7 +80,7 @@ fun AppTheme(
                 isAppearanceLightStatusBars = !darkTheme
             }
         }
-        val bg = colorScheme.background.toArgb()
+        val bg = rawColorScheme.background.toArgb()
         LaunchedEffect(darkTheme, bg) {
             activity.window.decorView.setBackgroundColor(bg)
         }

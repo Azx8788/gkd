@@ -15,6 +15,7 @@ import li.gkd.db.SubsItem
 import li.gkd.app.data.SubsVersion
 import li.gkd.db.Db
 import li.gkd.app.util.LogUtils
+import li.gkd.app.app
 import li.gkd.app.util.MutexState
 import li.gkd.app.util.NetworkUtils
 import li.gkd.app.util.client
@@ -31,32 +32,69 @@ object SubscriptionRepository {
         field = MutableStateFlow<Loadable<SubscriptionSnapshot>>(Loadable.Loading)
     val updating = updateMutex.state
 
-    /** 内置默认订阅: 首次启动注入, 幂等(insertOrIgnore 不覆盖已有) */
+    /** 内置整合订阅(assets/builtin_subscription.json5, 由三订阅离线合并去重生成) */
+    private const val MERGED_SUBS_ID = 20260915L
+    private const val BUILTIN_ASSET = "builtin_subscription.json5"
+
+    /** URL 订阅种子: id, url, 默认是否启用(整合订阅已含全部内容, 默认只开甘霖) */
     private val builtinSubscriptionSeeds = listOf(
-        666L to "https://registry.npmmirror.com/@aisouler/gkd_subscription/latest/files/dist/AIsouler_gkd.json5",
-        233L to "https://registry.npmmirror.com/@ganlinte/gkd-subscription/latest/files",
-        1L to "https://registry.npmmirror.com/gkd-subscription/latest/files",
+        Triple(233L, "https://registry.npmmirror.com/@ganlinte/gkd-subscription/latest/files", true),
+        Triple(666L, "https://registry.npmmirror.com/@aisouler/gkd_subscription/latest/files/dist/AIsouler_gkd.json5", false),
+        Triple(1L, "https://registry.npmmirror.com/gkd-subscription/latest/files", false),
     )
 
     private suspend fun seedBuiltinSubscriptions(): Boolean = withContext(Dispatchers.IO) {
         val items = Db.subsItemDao.queryAll()
         val existingIds = items.map { it.id }.toSet()
         val maxOrder = items.maxOfOrNull { it.order } ?: 0
-        val newSeeds = builtinSubscriptionSeeds.filter { (id, _) -> id !in existingIds }
-        if (newSeeds.isEmpty()) return@withContext false
-        Db.subsItemDao.insertOrIgnore(
-            *newSeeds.mapIndexed { index, (id, url) ->
-                SubsItem(
-                    id = id,
-                    order = maxOrder + 1 + index,
-                    updateUrl = url,
-                    enable = true,
-                    enableUpdate = true,
-                )
-            }.toTypedArray()
-        )
-        LogUtils.d("内置订阅注入: ${newSeeds.map { it.first }}")
-        true
+        var changed = false
+
+        // 1. 内置整合订阅: 从 assets 读取并写入本地订阅文件
+        if (MERGED_SUBS_ID !in existingIds) {
+            val text = runCatching {
+                app.assets.open(BUILTIN_ASSET).bufferedReader().use { it.readText() }
+            }.getOrNull()
+            val subscription = text?.let {
+                runCatching { RawSubscription.parse(it, json5 = true) }.getOrNull()
+            }
+            if (subscription != null) {
+                updateMutex.withStateLock {
+                    saveLocked(
+                        subscription = subscription.copy(id = MERGED_SUBS_ID),
+                        newItem = SubsItem(
+                            id = MERGED_SUBS_ID,
+                            order = maxOrder + 1,
+                            enable = true,
+                            enableUpdate = false,
+                        ),
+                        insertItem = true,
+                    )
+                }
+                changed = true
+                LogUtils.d("内置整合订阅注入成功")
+            } else {
+                LogUtils.d("内置整合订阅解析失败")
+            }
+        }
+
+        // 2. URL 订阅: 幂等注入(不覆盖已有), 默认只启用甘霖
+        val newSeeds = builtinSubscriptionSeeds.filter { (id, _, _) -> id !in existingIds }
+        if (newSeeds.isNotEmpty()) {
+            Db.subsItemDao.insertOrIgnore(
+                *newSeeds.mapIndexed { index, (id, url, enable) ->
+                    SubsItem(
+                        id = id,
+                        order = maxOrder + 2 + index,
+                        updateUrl = url,
+                        enable = enable,
+                        enableUpdate = true,
+                    )
+                }.toTypedArray()
+            )
+            changed = true
+            LogUtils.d("URL订阅注入: ${newSeeds.map { it.first }}")
+        }
+        changed
     }
 
     /** 快照审查页生成的规则组: 落盘本地订阅(-2), key 自动分配避免冲突, 返回分配的 key */

@@ -1,12 +1,26 @@
-# 更新内容
+# 更新内容 (v2.0.0 第三方修改版)
 
-- 优化快照结果提示文案
-- 修复某些场景无障碍服务状态判断错误
-- 修复某些设备新安装应用后对应规则不启用
+> 本版基于 gkd-kit/gkd(f6c42e2) 修改，fork 仓库：[Azx8788/gkd](https://github.com/Azx8788/gkd)（分支 main/GMD与GKD）
+
+## 新增
+
+- **原生快照审查器**：快照记录 → 「生成跳过广告规则」→ 自动识别广告关闭按钮（跳过/关闭/知道了/不感兴趣/青少年模式/无字小图标），截图/节点树可视化选择，一键保存到本地订阅，立即生效、重启不丢
+- **内置三条广告订阅**（AIsouler / 甘霖 / 梦念逍遥）：首次启动自动加载，每次启动自动检查更新
+- **首次启动说明弹窗**：声明第三方来源与使用方式
+
+## 修复
+
+- 选择器生成修复空 id 误判（`[id=""]`）
+- 无 id/vid/text/desc 的按钮改用**祖先路径回退**定位（向上找稳定 id/vid 锚点 + `<N` 路径语法）
+- 规则组 key 服务端自动分配（max+1），不再与已有订阅 key 冲突
+
+## 使用流程
+
+1. 授权无障碍 → 遇到广告抓快照
+2. 快照记录 → 点条目 → 「生成跳过广告规则」
+3. 点击截图或节点树选中广告按钮（绿点=可点击）→「保存此节点为规则」或底部「一键保存识别结果」
+4. 规则即时生效，可在订阅页管理/删除
 
 ## 更新方式
 
-- GKD - 设置 - 关于 - 检测更新
-- 下列方式之一
-
-<a href="https://gkd.li/guide/"><img src="https://e.gkd.li/f23b704d-d781-494b-9719-393f95683b89" alt="Download from GKD.LI" width="32%" /></a><a href="https://play.google.com/store/apps/details?id=li.songe.gkd"><img src="https://e.gkd.li/f63fabeb-0342-4961-a46d-cac61b0f8856" alt="Download from Google Play" width="32%" /></a><a href="https://github.com/gkd-kit/gkd/releases"><img src="https://e.gkd.li/c1ef2bb9-7472-46d5-9806-81b4c37e5b4d" alt="Download from GitHub releases" width="32%" /></a>
+- 本仓库 Releases 页下载最新 APK（[Azx8788/gkd/releases](https://github.com/Azx8788/gkd/releases)）
