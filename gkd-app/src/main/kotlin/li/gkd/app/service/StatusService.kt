@@ -22,11 +22,13 @@ import li.gkd.app.priv.privilegeServiceStatusFlow
 import li.gkd.app.priv.uiAutomationFlow
 import li.gkd.app.store.AppStore.actionCountFlow
 import li.gkd.app.store.AppStore.storeFlow
+import li.gkd.app.store.AppStore.updateEnableAutomator
 import li.gkd.app.domain.rule.RuleSummary
 import li.gkd.app.data.appinfo.AppInfoRepository
 import li.gkd.app.data.subscription.SubscriptionState
 import li.gkd.app.ui.share.statusText
 import li.gkd.app.util.IntentUtils
+import li.gkd.app.util.ToastUtils.toast
 import kotlin.time.Duration.Companion.milliseconds
 
 class StatusService : LifecycleHookService() {
@@ -149,10 +151,14 @@ class StatusService : LifecycleHookService() {
                         var consecutiveFailures = 0
                         while (true) {
                             delay(A11Y_WATCHDOG_CHECK_INTERVAL.milliseconds)
-                            if (!storeFlow.value.enableAutomator) continue
                             if (A11yService.isRunning.value) {
                                 consecutiveFailures = 0
                                 continue
+                            }
+                            if (!storeFlow.value.enableAutomator) {
+                                // 无障碍掉线时 onDestroyed 会将 enableAutomator 置为 false,
+                                // 必须先恢复才能通过 fixRestartAutomatorService 的内部检查
+                                updateEnableAutomator(true)
                             }
                             fixRestartAutomatorService()
                             // 等待重启流程完成(内部含时序等待)后再判断结果
@@ -161,6 +167,12 @@ class StatusService : LifecycleHookService() {
                                 consecutiveFailures = 0
                             } else {
                                 consecutiveFailures++
+                                if (consecutiveFailures == 1
+                                    && !PermissionStates.writeSecureSettings.updateAndGet()
+                                ) {
+                                    // 重启无障碍依赖「写入安全设置权限」, 缺失时静默无效, 必须明确提示
+                                    toast("看门狗重启无障碍失败: 缺少「${PermissionStates.writeSecureSettings.name}」")
+                                }
                                 // 连续失败时指数退避, 减少无效重试与提示打扰
                                 delay(
                                     (A11Y_WATCHDOG_BACKOFF_BASE shl consecutiveFailures.coerceAtMost(4))

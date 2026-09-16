@@ -229,9 +229,12 @@ fun WorkModePage() {
                         .padding(horizontal = cardHorizontalPadding),
                     paddingDisabled = true,
                     title = "无障碍看门狗",
-                    subtitle = "无障碍意外断开时每 5 秒自动检测并重启恢复，依赖「常驻通知」保活进程",
+                    subtitle = "无障碍断开后每 5 秒自动检测并重启恢复，需「写入安全设置权限」，依赖「常驻通知」保活进程",
                     checked = store.enableA11yWatchdog,
                     onCheckedChange = vm.scope.launchUiAction { enabled ->
+                        if (enabled && !writeSecureSettings) {
+                            toast("缺少「${PermissionStates.writeSecureSettings.name}」，看门狗无法自动重启无障碍")
+                        }
                         if (enabled && !StatusService.isRunning.value) {
                             if (!mainVm.permissionRequests.ensurePermissions(
                                     PermissionStates.foregroundServiceSpecialUse,

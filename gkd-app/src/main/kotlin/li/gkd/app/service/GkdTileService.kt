@@ -21,6 +21,7 @@ import li.gkd.app.platform.lifecycle.MainActivityVisibility
 import li.gkd.app.priv.AutomationService
 import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.priv.uiAutomationFlow
+import li.gkd.app.store.AppStore
 import li.gkd.app.store.AppStore.actualA11yScopeAppList
 import li.gkd.app.store.AppStore.actualBlockA11yAppList
 import li.gkd.app.store.AppStore.storeFlow
@@ -59,6 +60,11 @@ private fun modifyA11yRun(
 
 private suspend fun switchA11yService() {
     if (A11yService.isRunning.value) {
+        // 用户主动关闭无障碍, 同时停用看门狗, 避免看门狗立即将其拉起导致"关不掉"
+        if (storeFlow.value.enableA11yWatchdog) {
+            AppStore.updateSettings { it.copy(enableA11yWatchdog = false) }
+            toast("无障碍看门狗已停用")
+        }
         A11yService.instance?.disableSelf()
     } else {
         if (!PermissionStates.writeSecureSettings.updateAndGet()) {
