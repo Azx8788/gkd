@@ -20,7 +20,7 @@
 
 **本项目遵循 [GPL-3.0-only](/LICENSE) 开源，项目仅供学习交流，禁止用于商业或非法用途**
 
-## 本分支说明 (GMD与GKD)
+## 本分支说明
 
 > 本分支为 [gkd-kit/gkd](https://github.com/gkd-kit/gkd) 的第三方修改版（fork），在遵循原版 GPL-3.0 协议的前提下新增以下内容：
 
