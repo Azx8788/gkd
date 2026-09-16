@@ -25,7 +25,6 @@ import li.gkd.app.notif.NotificationDispatcher
 import li.gkd.app.notif.PostedNotificationKey
 import li.gkd.app.permission.PermissionStates
 import li.gkd.app.platform.overlay.KeepAliveOverlayCoordinator
-import li.gkd.app.priv.Privilege
 import li.gkd.app.priv.PrivilegeServiceStatus
 import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.priv.privilegeServiceStatusFlow
@@ -39,6 +38,7 @@ import li.gkd.app.data.subscription.SubscriptionState
 import li.gkd.app.ui.share.statusText
 import li.gkd.app.util.IntentUtils
 import li.gkd.app.util.LogUtils
+import priv.kit.core.Privilege
 import kotlin.time.Duration.Companion.milliseconds
 
 class StatusService : LifecycleHookService() {
