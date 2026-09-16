@@ -1,5 +1,6 @@
 package li.gkd.app.notif
 
+import android.app.PendingIntent
 import android.app.Service
 import li.gkd.app.META
 import li.gkd.app.R
@@ -31,7 +32,13 @@ enum class PostedNotificationKey(
     val channel: AppNotificationChannel,
 ) {
     SnapshotSaved(id = 105, channel = AppNotificationChannel.Snapshot),
+    Watchdog(id = 109, channel = AppNotificationChannel.Service),
 }
+
+data class NotificationAction(
+    val title: String,
+    val intent: PendingIntent,
+)
 
 sealed interface AppNotificationSpec {
     val id: Int
@@ -43,6 +50,8 @@ sealed interface AppNotificationSpec {
     val ongoing: Boolean
     val autoCancel: Boolean
     val stopService: KClass<out Service>?
+    val actions: List<NotificationAction>
+        get() = emptyList()
 }
 
 data class ForegroundNotification(
@@ -69,6 +78,7 @@ data class PostedNotification(
     override val title: String,
     override val text: String? = null,
     override val uri: String? = null,
+    override val actions: List<NotificationAction> = emptyList(),
     override val smallIcon: Int = R.drawable.ic_status,
     override val ongoing: Boolean = false,
     override val autoCancel: Boolean = true,
@@ -162,5 +172,24 @@ object NotificationCatalog {
         title = "轨迹提示已开启",
         uri = "gkd://page?tab=3",
         stopService = TrackService::class,
+    )
+
+    fun watchdogAsk(
+        allowIntent: PendingIntent,
+        postponeIntent: PendingIntent,
+    ) = PostedNotification(
+        key = PostedNotificationKey.Watchdog,
+        title = "无障碍已断开",
+        text = "10 秒后自动重启无障碍，可点击立即处理",
+        actions = listOf(
+            NotificationAction("立即重启", allowIntent),
+            NotificationAction("暂不重启", postponeIntent),
+        ),
+    )
+
+    fun watchdogFail(text: String) = PostedNotification(
+        key = PostedNotificationKey.Watchdog,
+        title = "看门狗重启无障碍失败",
+        text = text,
     )
 }

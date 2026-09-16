@@ -1,7 +1,11 @@
 package li.gkd.app.service
 
+import android.app.PendingIntent
+import android.content.Intent
 import android.view.WindowManager
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -11,13 +15,19 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import li.gkd.app.META
 import li.gkd.app.a11y.useA11yServiceEnabledFlow
 import li.gkd.app.app
 import li.gkd.app.notif.NotificationCatalog
+import li.gkd.app.notif.NotificationDispatcher
+import li.gkd.app.notif.PostedNotificationKey
 import li.gkd.app.permission.PermissionStates
 import li.gkd.app.platform.overlay.KeepAliveOverlayCoordinator
+import li.gkd.app.priv.Privilege
 import li.gkd.app.priv.PrivilegeServiceStatus
+import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.priv.privilegeServiceStatusFlow
 import li.gkd.app.priv.uiAutomationFlow
 import li.gkd.app.store.AppStore.actionCountFlow
@@ -28,7 +38,7 @@ import li.gkd.app.data.appinfo.AppInfoRepository
 import li.gkd.app.data.subscription.SubscriptionState
 import li.gkd.app.ui.share.statusText
 import li.gkd.app.util.IntentUtils
-import li.gkd.app.util.ToastUtils.toast
+import li.gkd.app.util.LogUtils
 import kotlin.time.Duration.Companion.milliseconds
 
 class StatusService : LifecycleHookService() {
@@ -143,7 +153,7 @@ class StatusService : LifecycleHookService() {
                     ).startForeground()
                 }
             }
-            // 无障碍看门狗: 周期检查无障碍运行状态, 断开时自动重启恢复
+            // 无障碍看门狗: 掉线后发通知询问, 10 秒内用户确认或超时后自动重启
             lifecycleScope.launch {
                 storeFlow.map { it.enableA11yWatchdog }.distinctUntilChanged()
                     .collectLatest { enabled ->
@@ -155,29 +165,43 @@ class StatusService : LifecycleHookService() {
                                 consecutiveFailures = 0
                                 continue
                             }
-                            if (!storeFlow.value.enableAutomator) {
-                                // 无障碍掉线时 onDestroyed 会将 enableAutomator 置为 false,
-                                // 必须先恢复才能通过 fixRestartAutomatorService 的内部检查
-                                updateEnableAutomator(true)
+                            // 清空残留命令, 只接受本次询问窗口内的用户操作
+                            while (watchdogCommands.tryReceive().isSuccess) {
                             }
-                            fixRestartAutomatorService()
+                            NotificationCatalog.watchdogAsk(
+                                allowIntent = watchdogCommandIntent(ACTION_WATCHDOG_RESTART_NOW),
+                                postponeIntent = watchdogCommandIntent(ACTION_WATCHDOG_POSTPONE),
+                            ).post()
+                            val command = withTimeoutOrNull(A11Y_WATCHDOG_CONFIRM_TIMEOUT.milliseconds) {
+                                watchdogCommands.receive()
+                            }
+                            if (command == WatchdogCommand.Postpone) {
+                                // 用户选择暂不重启, 本轮跳过并退避
+                                NotificationDispatcher.cancel(PostedNotificationKey.Watchdog.id)
+                                consecutiveFailures++
+                                delay(watchdogBackoff(consecutiveFailures))
+                                continue
+                            }
+                            // 用户确认或超时: 执行自动重启
+                            watchdogRestart()
                             // 等待重启流程完成(内部含时序等待)后再判断结果
                             delay(A11Y_WATCHDOG_AWAIT_TIME.milliseconds)
                             if (A11yService.isRunning.value) {
+                                NotificationDispatcher.cancel(PostedNotificationKey.Watchdog.id)
                                 consecutiveFailures = 0
                             } else {
                                 consecutiveFailures++
-                                if (consecutiveFailures == 1
-                                    && !PermissionStates.writeSecureSettings.updateAndGet()
-                                ) {
-                                    // 重启无障碍依赖「写入安全设置权限」, 缺失时静默无效, 必须明确提示
-                                    toast("看门狗重启无障碍失败: 缺少「${PermissionStates.writeSecureSettings.name}」")
-                                }
-                                // 连续失败时指数退避, 减少无效重试与提示打扰
-                                delay(
-                                    (A11Y_WATCHDOG_BACKOFF_BASE shl consecutiveFailures.coerceAtMost(4))
-                                        .coerceAtMost(A11Y_WATCHDOG_BACKOFF_MAX).milliseconds
-                                )
+                                val hasWriteSecure =
+                                    PermissionStates.writeSecureSettings.updateAndGet()
+                                NotificationCatalog.watchdogFail(
+                                    if (hasWriteSecure) {
+                                        "自动重启无障碍失败，请尝试手动重启"
+                                    } else {
+                                        "缺少「写入安全设置权限」且 Shizuku 特权服务未连接，无法自动重启"
+                                    }
+                                ).post()
+                                // 连续失败时指数退避, 减少无效重试与通知打扰
+                                delay(watchdogBackoff(consecutiveFailures))
                             }
                         }
                     }
@@ -189,6 +213,14 @@ class StatusService : LifecycleHookService() {
                 owner = this,
             )
         }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_WATCHDOG_RESTART_NOW -> watchdogCommands.trySend(WatchdogCommand.RestartNow)
+            ACTION_WATCHDOG_POSTPONE -> watchdogCommands.trySend(WatchdogCommand.Postpone)
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     companion object {
@@ -213,13 +245,59 @@ class StatusService : LifecycleHookService() {
                 lastAutoStart = System.currentTimeMillis()
             }
         }
+
+        private val watchdogCommands = Channel<WatchdogCommand>(Channel.CONFLATED)
+
+        private val ACTION_WATCHDOG_RESTART_NOW by lazy { META.appId + ".WATCHDOG_RESTART_NOW" }
+        private val ACTION_WATCHDOG_POSTPONE by lazy { META.appId + ".WATCHDOG_POSTPONE" }
+
+        private fun watchdogCommandIntent(action: String): PendingIntent {
+            val intent = Intent(app, StatusService::class.java).setAction(action)
+            return PendingIntent.getService(
+                app,
+                PostedNotificationKey.Watchdog.id,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        // 通过特权服务(Shizuku)重新授予自身权限, 再拉起无障碍
+        private suspend fun watchdogRestart() {
+            try {
+                withContext(Dispatchers.IO) {
+                    if (Privilege.pingServer()) {
+                        privilegeContextFlow.value?.grantSelf()
+                    }
+                }
+            } catch (e: Exception) {
+                LogUtils.d(e)
+            }
+            if (!storeFlow.value.enableAutomator) {
+                // 无障碍掉线时 onDestroyed 会将 enableAutomator 置为 false,
+                // 必须先恢复才能通过 fixRestartAutomatorService 的内部检查
+                updateEnableAutomator(true)
+            }
+            fixRestartAutomatorService()
+        }
     }
 }
+
+private enum class WatchdogCommand {
+    RestartNow,
+    Postpone,
+}
+
+private fun watchdogBackoff(consecutiveFailures: Int) =
+    (A11Y_WATCHDOG_BACKOFF_BASE shl consecutiveFailures.coerceAtMost(4))
+        .coerceAtMost(A11Y_WATCHDOG_BACKOFF_MAX).milliseconds
 
 private val defaultStatusNotification by lazy { NotificationCatalog.status() }
 
 // 看门狗检查间隔
 private const val A11Y_WATCHDOG_CHECK_INTERVAL = 5000L
+
+// 掉线后通知询问的确认窗口时长
+private const val A11Y_WATCHDOG_CONFIRM_TIMEOUT = 10_000L
 
 // 触发重启后等待其生效的时间(略大于内部修复+启动等待的总时长)
 private const val A11Y_WATCHDOG_AWAIT_TIME = 4000L

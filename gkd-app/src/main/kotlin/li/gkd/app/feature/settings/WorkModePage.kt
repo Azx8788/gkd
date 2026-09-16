@@ -229,11 +229,11 @@ fun WorkModePage() {
                         .padding(horizontal = cardHorizontalPadding),
                     paddingDisabled = true,
                     title = "无障碍看门狗",
-                    subtitle = "无障碍断开后每 5 秒自动检测并重启恢复，需「写入安全设置权限」，依赖「常驻通知」保活进程",
+                    subtitle = "断开后发通知确认，10 秒内确认或超时自动重启；需「写入安全设置权限」或 Shizuku 特权服务",
                     checked = store.enableA11yWatchdog,
                     onCheckedChange = vm.scope.launchUiAction { enabled ->
-                        if (enabled && !writeSecureSettings) {
-                            toast("缺少「${PermissionStates.writeSecureSettings.name}」，看门狗无法自动重启无障碍")
+                        if (enabled && !writeSecureSettings && privilegeContext == null) {
+                            toast("缺少「写入安全设置权限」且 Shizuku 未连接，看门狗将无法自动重启")
                         }
                         if (enabled && !StatusService.isRunning.value) {
                             if (!mainVm.permissionRequests.ensurePermissions(

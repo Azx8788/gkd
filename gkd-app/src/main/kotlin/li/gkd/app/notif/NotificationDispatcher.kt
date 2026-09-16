@@ -42,6 +42,9 @@ object NotificationDispatcher {
             .setOngoing(spec.ongoing)
             .setAutoCancel(spec.autoCancel)
 
+        spec.actions.forEach { action ->
+            builder.addAction(0, action.title, action.intent)
+        }
         spec.stopService?.let { serviceClass ->
             val stopIntent = PendingIntent.getBroadcast(
                 app,
@@ -60,6 +63,10 @@ object NotificationDispatcher {
         if (!PermissionStates.notification.updateAndGet()) return
         @SuppressLint("MissingPermission")
         NotificationManagerCompat.from(app).notify(notification.id, build(notification))
+    }
+
+    fun cancel(id: Int) {
+        NotificationManagerCompat.from(app).cancel(id)
     }
 
     private fun Service.canStartForeground(): Boolean {
