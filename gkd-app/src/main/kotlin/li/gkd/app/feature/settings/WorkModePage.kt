@@ -229,7 +229,7 @@ fun WorkModePage() {
                         .padding(horizontal = cardHorizontalPadding),
                     paddingDisabled = true,
                     title = "无障碍看门狗",
-                    subtitle = "断开后发通知确认，10 秒内确认或超时自动重启；需「写入安全设置权限」或 Shizuku 特权服务",
+                    subtitle = "断开后发通知确认，10 秒内确认或超时自动重启；应用进程被杀后由闹钟兜底自动复活；需「写入安全设置权限」或 Shizuku 特权服务",
                     checked = store.enableA11yWatchdog,
                     onCheckedChange = vm.scope.launchUiAction { enabled ->
                         if (enabled && !writeSecureSettings && privilegeContext == null) {
