@@ -36,9 +36,9 @@ object SubscriptionRepository {
     private const val MERGED_SUBS_ID = 20260915L
     private const val BUILTIN_ASSET = "builtin_subscription.json5"
 
-    /** URL 订阅种子: id, url, 默认是否启用(整合订阅已含全部内容, 默认只开甘霖) */
+    /** URL 订阅种子: id, url, 默认是否启用(整合订阅已含全部内容, 默认全关, 避免跨订阅重复; 需要在线更新时用户自行打开) */
     private val builtinSubscriptionSeeds = listOf(
-        Triple(233L, "https://registry.npmmirror.com/@ganlinte/gkd-subscription/latest/files", true),
+        Triple(233L, "https://registry.npmmirror.com/@ganlinte/gkd-subscription/latest/files", false),
         Triple(666L, "https://registry.npmmirror.com/@aisouler/gkd_subscription/latest/files/dist/AIsouler_gkd.json5", false),
         Triple(1L, "https://registry.npmmirror.com/gkd-subscription/latest/files", false),
     )
