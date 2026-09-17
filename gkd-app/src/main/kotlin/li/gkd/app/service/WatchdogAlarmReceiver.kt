@@ -32,6 +32,12 @@ class WatchdogAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED, ACTION_WATCHDOG_ALARM -> {
+                // 开机自启拉活受独立开关控制, 闹钟触发不受影响
+                if (intent.action == Intent.ACTION_BOOT_COMPLETED &&
+                    !storeFlow.value.enableBootRevive
+                ) {
+                    return
+                }
                 if (!storeFlow.value.enableA11yWatchdog) {
                     WatchdogAlarm.cancel(context)
                     return

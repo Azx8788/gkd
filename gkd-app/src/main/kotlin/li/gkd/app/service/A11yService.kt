@@ -14,6 +14,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import li.gkd.app.a11y.A11yCommonImpl
@@ -26,6 +29,7 @@ import li.gkd.app.appScope
 import li.gkd.app.platform.lifecycle.LifecycleHooks
 import li.gkd.app.platform.overlay.KeepAliveOverlayCoordinator
 import li.gkd.app.priv.privilegeContextFlow
+import li.gkd.app.store.AppStore.storeFlow
 import li.gkd.app.store.AppStore.updateEnableAutomator
 import li.gkd.app.util.AndroidTarget
 import li.gkd.app.util.AutomatorModeOption
@@ -181,7 +185,20 @@ abstract class A11yService : AccessibilityService(), A11yCommonImpl {
         super.onServiceConnected()
         LogUtils.d("onA11yConnected -> ${this::class.simpleName}")
         instance = this
-        attachKeepAliveOverlay()
+        scope.launch {
+            // 悬浮窗保活跟随设置开关, 修改后即时挂载/移除
+            storeFlow.map { it.enableKeepAliveOverlay }.distinctUntilChanged()
+                .collectLatest { enabled ->
+                    if (enabled) {
+                        attachKeepAliveOverlay()
+                    } else {
+                        KeepAliveOverlayCoordinator.release(
+                            source = KeepAliveOverlayCoordinator.Source.Accessibility,
+                            owner = this@A11yService,
+                        )
+                    }
+                }
+        }
         connected = true
         toast("无障碍已启动")
         if (currentAppUseA11y) {

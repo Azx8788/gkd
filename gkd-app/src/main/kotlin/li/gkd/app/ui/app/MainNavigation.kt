@@ -56,6 +56,8 @@ import li.gkd.app.feature.subscription.UpsertRuleGroupPage
 import li.gkd.app.feature.subscription.UpsertRuleGroupRoute
 import li.gkd.app.ui.WebViewPage
 import li.gkd.app.ui.WebViewRoute
+import li.gkd.app.feature.settings.KeepAlivePage
+import li.gkd.app.feature.settings.KeepAliveRoute
 import li.gkd.app.feature.settings.WorkModePage
 import li.gkd.app.feature.settings.WorkModeRoute
 import li.gkd.app.ui.share.LocalMainViewModel
@@ -65,6 +67,7 @@ import li.gkd.app.ui.home.HomeRoute
 private val mainRouteEntryProvider = entryProvider {
     entry<HomeRoute> { HomePage() }
     entry<WorkModeRoute> { WorkModePage() }
+    entry<KeepAliveRoute> { KeepAlivePage() }
     entry<AboutRoute> { AboutPage() }
     entry<BlockA11yAppListRoute> { BlockA11yAppListPage() }
     entry<AdvancedPageRoute> { AdvancedPage() }

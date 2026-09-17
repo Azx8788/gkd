@@ -112,11 +112,18 @@ class StatusService : LifecycleHookService() {
                 combine(
                     A11yService.isRunning,
                     KeepAliveOverlayCoordinator.accessibilityAttached,
-                ) { a11yRunning, a11yOverlayAttached ->
-                    a11yRunning to a11yOverlayAttached
+                    storeFlow.map { it.enableKeepAliveOverlay }.distinctUntilChanged(),
+                ) { a11yRunning, a11yOverlayAttached, overlayEnabled ->
+                    Triple(a11yRunning, a11yOverlayAttached, overlayEnabled)
                 }.distinctUntilChanged().collectLatest {
-                    val (a11yRunning, a11yOverlayAttached) = it
-                    if (a11yRunning && a11yOverlayAttached) {
+                    val (a11yRunning, a11yOverlayAttached, overlayEnabled) = it
+                    if (!overlayEnabled) {
+                        // 悬浮窗保活被关闭时移除本服务持有的悬浮窗
+                        KeepAliveOverlayCoordinator.release(
+                            source = KeepAliveOverlayCoordinator.Source.Status,
+                            owner = this@StatusService,
+                        )
+                    } else if (a11yRunning && a11yOverlayAttached) {
                         KeepAliveOverlayCoordinator.releaseAfterHandoff(
                             source = KeepAliveOverlayCoordinator.Source.Status,
                             owner = this@StatusService,
