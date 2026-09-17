@@ -63,6 +63,7 @@ private suspend fun switchA11yService() {
         // 用户主动关闭无障碍, 同时停用看门狗, 避免看门狗立即将其拉起导致"关不掉"
         if (storeFlow.value.enableA11yWatchdog) {
             AppStore.updateSettings { it.copy(enableA11yWatchdog = false) }
+            WatchdogAlarm.cancel(app)
             toast("无障碍看门狗已停用")
         }
         A11yService.instance?.disableSelf()

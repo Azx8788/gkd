@@ -112,11 +112,18 @@ class StatusService : LifecycleHookService() {
                 combine(
                     A11yService.isRunning,
                     KeepAliveOverlayCoordinator.accessibilityAttached,
-                ) { a11yRunning, a11yOverlayAttached ->
-                    a11yRunning to a11yOverlayAttached
+                    storeFlow.map { it.enableKeepAliveOverlay }.distinctUntilChanged(),
+                ) { a11yRunning, a11yOverlayAttached, overlayEnabled ->
+                    Triple(a11yRunning, a11yOverlayAttached, overlayEnabled)
                 }.distinctUntilChanged().collectLatest {
-                    val (a11yRunning, a11yOverlayAttached) = it
-                    if (a11yRunning && a11yOverlayAttached) {
+                    val (a11yRunning, a11yOverlayAttached, overlayEnabled) = it
+                    if (!overlayEnabled) {
+                        // 悬浮窗保活被关闭时移除本服务持有的悬浮窗
+                        KeepAliveOverlayCoordinator.release(
+                            source = KeepAliveOverlayCoordinator.Source.Status,
+                            owner = this@StatusService,
+                        )
+                    } else if (a11yRunning && a11yOverlayAttached) {
                         KeepAliveOverlayCoordinator.releaseAfterHandoff(
                             source = KeepAliveOverlayCoordinator.Source.Status,
                             owner = this@StatusService,
@@ -157,7 +164,13 @@ class StatusService : LifecycleHookService() {
             lifecycleScope.launch {
                 storeFlow.map { it.enableA11yWatchdog }.distinctUntilChanged()
                     .collectLatest { enabled ->
-                        if (!enabled) return@collectLatest
+                        if (!enabled) {
+                            // 看门狗关闭时同步取消闹钟兜底(升级安装/多入口关闭场景)
+                            WatchdogAlarm.cancel(app)
+                            return@collectLatest
+                        }
+                        // 确保闹钟兜底已注册: 老版本升级上来时看门狗已开但闹钟不存在
+                        WatchdogAlarm.schedule(app)
                         var consecutiveFailures = 0
                         while (true) {
                             delay(A11Y_WATCHDOG_CHECK_INTERVAL.milliseconds)
@@ -262,7 +275,8 @@ class StatusService : LifecycleHookService() {
         }
 
         // 通过特权服务(Shizuku)重新授予自身权限, 再拉起无障碍
-        private suspend fun watchdogRestart() {
+        // 供看门狗主循环与闹钟兜底接收器(WatchdogAlarmReceiver)共用
+        suspend fun watchdogRestart() {
             try {
                 withContext(Dispatchers.IO) {
                     if (Privilege.pingServer()) {
@@ -300,7 +314,7 @@ private const val A11Y_WATCHDOG_CHECK_INTERVAL = 5000L
 private const val A11Y_WATCHDOG_CONFIRM_TIMEOUT = 10_000L
 
 // 触发重启后等待其生效的时间(略大于内部修复+启动等待的总时长)
-private const val A11Y_WATCHDOG_AWAIT_TIME = 4000L
+const val A11Y_WATCHDOG_AWAIT_TIME = 4000L
 
 // 连续失败时的指数退避基准与上限
 private const val A11Y_WATCHDOG_BACKOFF_BASE = 5000L

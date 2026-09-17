@@ -152,6 +152,8 @@ class PrivilegeContext private constructor(
     private fun allowAllSelfMode() {
         setAllowSelfMode(AppOpsManagerHidden.OP_POST_NOTIFICATION)
         setAllowSelfMode(AppOpsManagerHidden.OP_SYSTEM_ALERT_WINDOW)
+        setAllowSelfMode(AppOpsManagerHidden.OP_RUN_IN_BACKGROUND)
+        setAllowSelfMode(AppOpsManagerHidden.OP_RUN_ANY_IN_BACKGROUND)
         if (AndroidTarget.Q) {
             setAllowSelfMode(AppOpsManagerHidden.OP_ACCESS_ACCESSIBILITY)
         }

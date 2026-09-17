@@ -59,6 +59,7 @@ import li.gkd.app.store.AppStore.storeFlow
 import li.gkd.app.store.AppStore.actionCountFlow
 import li.gkd.app.feature.settings.AboutRoute
 import li.gkd.app.feature.settings.AdvancedPageRoute
+import li.gkd.app.feature.settings.KeepAliveRoute
 import li.gkd.app.ui.BlockA11yAppListRoute
 import li.gkd.app.ui.PrivilegeServiceRoute
 import li.gkd.app.ui.component.CustomOutlinedTextField
@@ -528,6 +529,9 @@ fun useSettingsPage(): ScaffoldExt {
                 color = MaterialTheme.colorScheme.primary,
             )
 
+            SettingItem(title = "保活设置", onClick = {
+                mainVm.navigatePage(KeepAliveRoute)
+            })
             SettingItem(title = "高级设置", onClick = {
                 mainVm.navigatePage(AdvancedPageRoute)
             })

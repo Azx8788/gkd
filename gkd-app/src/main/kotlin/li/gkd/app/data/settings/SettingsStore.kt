@@ -16,6 +16,8 @@ data class SettingsStore(
     val enableMatch: Boolean = true,
     val enableStatusService: Boolean = false,
     val enableA11yWatchdog: Boolean = false,
+    val enableKeepAliveOverlay: Boolean = true,
+    val enableBootRevive: Boolean = true,
     val excludeFromRecents: Boolean = false,
     val captureScreenshot: Boolean = false,
     val screenshotTargetAppId: String = "",
