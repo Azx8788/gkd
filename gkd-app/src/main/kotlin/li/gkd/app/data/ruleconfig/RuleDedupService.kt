@@ -1,5 +1,6 @@
 package li.gkd.app.data.ruleconfig
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import li.gkd.app.a11y.launcherAppId
@@ -24,6 +25,15 @@ object RuleDedupService {
         val enabledCount: Int,
         val duplicateCountClosed: Int,
         val duplicateCountByApp: Map<String, Int>,
+    )
+
+    /** 疑似重复报告条目 */
+    data class SuspectPair(
+        val appId: String,
+        val appName: String?,
+        val groupAName: String,
+        val groupBName: String,
+        val similarity: Double,
     )
 
     /**
@@ -197,5 +207,33 @@ object RuleDedupService {
             }
             .sorted()
         return ruleParts.joinToString("§")
+    }
+
+    // ===== 特征级"疑似重复"识别 =====
+    // 规则文本里的关键 token: vid/id/desc/text 引号内值, 规整化(小写/去空白)后组成特征集
+    // 特征集完全相同 → 特征重复; Jaccard >= 0.8 → 疑似重复
+    private val tokenRegex = Regex("""(vid|id|desc|text)\s*[~*^$!]?=\s*"([^"]{1,60})"|desc\s*null""")
+
+    private fun extractTokens(selector: String): Set<String> =
+        tokenRegex.findAll(selector).map { m ->
+            val v = m.groupValues[2]
+            // 规整化: 小写 + 去空白/标点
+            v.trim().lowercase().replace(Regex("\\s"), "")
+        }.filter { it.isNotEmpty() }.toSet()
+
+    private fun featureFingerprint(group: RawSubscription.RawAppGroup): Set<String> {
+        val tokens = mutableSetOf<String>()
+        group.rules.forEach { r ->
+            (r.matches ?: emptyList()).forEach { tokens.addAll(extractTokens(it)) }
+            (r.anyMatches ?: emptyList()).forEach { tokens.addAll(extractTokens(it)) }
+        }
+        return tokens
+    }
+
+    private fun jaccard(a: Set<String>, b: Set<String>): Double {
+        if (a.isEmpty() && b.isEmpty()) return 0.0
+        val intersection = a.intersect(b).size
+        val union = a.union(b).size
+        return if (union == 0) 0.0 else intersection.toDouble() / union
     }
 }
