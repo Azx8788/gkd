@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -25,6 +26,7 @@ import li.gkd.app.notif.NotificationDispatcher
 import li.gkd.app.notif.PostedNotificationKey
 import li.gkd.app.permission.PermissionStates
 import li.gkd.app.platform.overlay.KeepAliveOverlayCoordinator
+import li.gkd.app.priv.gkdPrivilegeUiConfig
 import li.gkd.app.priv.PrivilegeServiceStatus
 import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.priv.privilegeServiceStatusFlow
@@ -39,6 +41,7 @@ import li.gkd.app.ui.share.statusText
 import li.gkd.app.util.IntentUtils
 import li.gkd.app.util.LogUtils
 import priv.kit.core.Privilege
+import priv.kit.ui.PrivilegeUi
 import kotlin.time.Duration.Companion.milliseconds
 
 class StatusService : LifecycleHookService() {
@@ -274,14 +277,12 @@ class StatusService : LifecycleHookService() {
             )
         }
 
-        // 通过特权服务(Shizuku)重新授予自身权限, 再拉起无障碍
+        // 通过特权服务(Shizuku/ADB)重新授予自身权限, 再拉起无障碍
         // 供看门狗主循环与闹钟兜底接收器(WatchdogAlarmReceiver)共用
         suspend fun watchdogRestart() {
             try {
                 withContext(Dispatchers.IO) {
-                    if (Privilege.pingServer()) {
-                        privilegeContextFlow.value?.grantSelf()
-                    }
+                    ensurePrivilegeAndGrantSelf()
                 }
             } catch (e: Exception) {
                 LogUtils.d(e)
@@ -292,6 +293,27 @@ class StatusService : LifecycleHookService() {
                 updateEnableAutomator(true)
             }
             fixRestartAutomatorService()
+        }
+
+        // 特权服务离线时先尝试静默恢复(依赖"自动恢复"设置与上次成功的启动方式),
+        // 否则等待未完成的连接就绪, 然后重新授予全部权限;
+        // 全程尽力而为, 失败不阻塞后续的无障碍重启.
+        private suspend fun ensurePrivilegeAndGrantSelf() {
+            var expectConnected = Privilege.pingServer()
+            if (!expectConnected) {
+                expectConnected = runCatching {
+                    PrivilegeUi.startSilently(gkdPrivilegeUiConfig) != null
+                }.getOrElse { error ->
+                    LogUtils.d("silent start privilege server failed", error)
+                    false
+                }
+            }
+            if (expectConnected) {
+                withTimeoutOrNull(PRIVILEGE_CONTEXT_AWAIT_MILLIS) {
+                    privilegeContextFlow.first { it != null }
+                }
+            }
+            privilegeContextFlow.value?.grantSelf()
         }
     }
 }
@@ -306,6 +328,9 @@ private fun watchdogBackoff(consecutiveFailures: Int) =
         .coerceAtMost(A11Y_WATCHDOG_BACKOFF_MAX).milliseconds
 
 private val defaultStatusNotification by lazy { NotificationCatalog.status() }
+
+// 等待特权服务连接与上下文就绪的最长时长(仅预计有连接时才会等待)
+private const val PRIVILEGE_CONTEXT_AWAIT_MILLIS = 6_000L
 
 // 看门狗检查间隔
 private const val A11Y_WATCHDOG_CHECK_INTERVAL = 5000L

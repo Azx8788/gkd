@@ -16,9 +16,11 @@ import li.gkd.app.app
 import li.gkd.app.data.UserInfo
 import li.gkd.app.permission.PermissionStates
 import li.gkd.app.util.AndroidTarget
+import li.gkd.app.util.LogUtils
 import priv.kit.core.Privilege
 import priv.kit.core.PrivilegeServerInfo
 import priv.kit.core.PrivilegeUserServiceConnection
+import priv.kit.core.command.PrivilegeCommand
 
 class PrivilegeContext private constructor(
     val serverInfo: PrivilegeServerInfo,
@@ -35,7 +37,7 @@ class PrivilegeContext private constructor(
     private val userService = IUserService.Stub.asInterface(userServiceConnection.binder)
     private var taskStackListenerRegistered = false
 
-    private fun initialize() {
+    private suspend fun initialize() {
         activityManager.value.registerTaskStackListener(CompatTaskStackListener)
         taskStackListenerRegistered = true
         grantSelf()
@@ -52,10 +54,11 @@ class PrivilegeContext private constructor(
         }
     }
 
-    fun grantSelf() {
+    suspend fun grantSelf() {
         if (Privilege.isPermissionRestricted()) return
         allowAllSelfMode()
         allowAllSelfPermission()
+        allowBatteryOptimizationWhitelist()
     }
 
     fun startForegroundService(intent: Intent) {
@@ -187,6 +190,36 @@ class PrivilegeContext private constructor(
         }
         if (AndroidTarget.CINNAMON_BUN) {
             grantSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK)
+        }
+    }
+
+    /**
+     * 通过特权 shell 将应用加入 Doze 电池优化白名单.
+     *
+     * 等效于 `adb shell cmd deviceidle whitelist +<pkg>`, 旧系统上回退到 dumpsys 写法;
+     * 失败仅记录日志, 不影响其它权限的授予.
+     */
+    private suspend fun allowBatteryOptimizationWhitelist() {
+        val powerManager = app.powerManager
+        if (powerManager.isIgnoringBatteryOptimizations(META.appId)) return
+        runCatching {
+            val result = Privilege.startCommand(
+                PrivilegeCommand(
+                    arguments = listOf(
+                        "/system/bin/sh",
+                        "-c",
+                        "cmd deviceidle whitelist +${META.appId}" +
+                            " || dumpsys deviceidle whitelist +${META.appId}",
+                    ),
+                ),
+            ).use { process -> process.awaitResult() }
+            LogUtils.d(
+                "grant battery whitelist",
+                "exit=${result.exitCode}",
+                "ignored=${powerManager.isIgnoringBatteryOptimizations(META.appId)}",
+            )
+        }.onFailure { error ->
+            LogUtils.d("grant battery whitelist failed", error)
         }
     }
 

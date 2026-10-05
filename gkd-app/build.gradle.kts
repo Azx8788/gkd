@@ -27,8 +27,8 @@ android {
     namespace = "li.gkd.app"
     defaultConfig {
         applicationId = "li.songe.gkd"
-        versionCode = 240
-        versionName = "2.4.0"
+        versionCode = 250
+        versionName = "2.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
